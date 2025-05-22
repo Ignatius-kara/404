@@ -215,7 +215,7 @@ if user_input:
     st.session_state.messages.append({"role": "assistant", "content": bot_response})
     
     # Clear input and rerun to show new messages
-    st.experimental_rerun()
+    st.rerun()
 
 st.markdown('</div>', unsafe_allow_html=True)
 
@@ -229,7 +229,7 @@ with col1:
         category = get_response_category("I'm feeling anxious")
         bot_response = random.choice(st.session_state.responses[category])
         st.session_state.messages.append({"role": "assistant", "content": bot_response})
-        st.experimental_rerun()
+        st.rerun()
 
 with col2:
     if st.button("📚 Study Stress"):
@@ -237,7 +237,7 @@ with col2:
         category = get_response_category("I'm stressed about exams")
         bot_response = random.choice(st.session_state.responses[category])
         st.session_state.messages.append({"role": "assistant", "content": bot_response})
-        st.experimental_rerun()
+        st.rerun()
 
 with col3:
     if st.button("😢 Feeling Lonely"):
@@ -245,7 +245,7 @@ with col3:
         category = get_response_category("I feel lonely")
         bot_response = random.choice(st.session_state.responses[category])
         st.session_state.messages.append({"role": "assistant", "content": bot_response})
-        st.experimental_rerun()
+        st.rerun()
 
 with col4:
     if st.button("🙏 Spiritual Questions"):
@@ -253,12 +253,12 @@ with col4:
         category = get_response_category("I have spiritual questions")
         bot_response = random.choice(st.session_state.responses[category])
         st.session_state.messages.append({"role": "assistant", "content": bot_response})
-        st.experimental_rerun()
+        st.rerun()
 
 # Clear conversation button
 if st.button("🔄 Start New Conversation"):
     st.session_state.messages = []
-    st.experimental_rerun()
+    st.rerun()
 
 # Footer
 st.markdown("---")
