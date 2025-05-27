@@ -1,145 +1,60 @@
-# 404
-# RU Mental Health Buddy
+Mental Health Support Chatbot
+A Streamlit-based mental health support chatbot with advanced analytics, designed to engage users in empathetic conversations, track mood and stress, and provide real-time visualizations. The app supports crisis detection, localization for Nigerian Pidgin, and integrates with a conversation log to address themes like self-forgiveness, identity, and relationships.
+Features
 
-## Overview
+Chat Interface: Engage in conversations with an AI assistant that responds based on mood, stress, and conversation category.
+Mood and Stress Tracking: Log mood/stress via text analysis (Hugging Face emotion classifier) or manual input, stored in a pandas DataFrame.
+Analytics Visualizations: Plotly charts for mood/stress trends and conversation topic distribution, with crisis event annotations.
+Crisis Detection: Identifies high-risk keywords and provides localized support resources (e.g., Nigerian counseling numbers).
+Localization: Supports Nigerian Pidgin responses for culturally sensitive interactions.
+Memory Optimization: Caching, garbage collection, and data pruning to manage memory usage.
+Data Export: Download mood data and chat history as CSV files.
+Accessibility: High-contrast design, ARIA labels, and large fonts for better accessibility.
+Document Integration: Loads conversation logs (e.g., JSON) to populate mood data and chat history, aligning with themes like self-forgiveness and boundary-setting.
 
-The **RU Mental Health Buddy** is a web application designed to provide mental health support to students at Redeemers University. It utilizes a chatbot interface to engage users in conversation, offering responses based on their input related to various mental health topics. The application is built using Streamlit, a popular framework for creating web applications in Python.
+Prerequisites
 
-## Requirements
+Python 3.8+
+A system with at least 4GB RAM (for Hugging Face model loading)
+Internet connection (for downloading model weights)
 
-To run this application, ensure you have the following packages installed:
+Installation
 
-```plaintext
-streamlit>=1.28.0
-# Optional: Uncomment if you need additional functionality later
-# requests>=2.28.0  # For HTTP requests
-# pandas>=1.5.0     # For data processing
-```
+Clone the repository:git clone https://github.com/your-repo/mental-health-chatbot.git
+cd mental-health-chatbot
 
-## Setup Instructions
 
-1. **Install Dependencies**: Use pip to install the required packages.
+Create a virtual environment:python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
 
-    ```bash
-    pip install -r requirements.txt
-    ```
-2. **Run the Application**: Start the Streamlit server.
 
-    ```bash
-    streamlit run app.py
-    ```
+Install dependencies:pip install -r requirements.txt
 
-## Application Structure
 
-### Page Configuration
+(Optional) Replace the sample document data in app.py (load_document_data) with your conversation log JSON file.
 
-The application is configured with a title, icon, layout, and sidebar state.
+Usage
 
-```python
-st.set_page_config(
-    page_title="RU Mental Health Buddy",
-    page_icon="🌟",
-    layout="wide",
-    initial_sidebar_state="collapsed"
-)
-```
+Run the Streamlit app:streamlit run app.py
 
-### Custom CSS
 
-The `load_css` function returns a string containing CSS styles for the application, enhancing its visual appeal.
+Open your browser at http://localhost:8501.
+Interact via the chat interface, log mood/stress manually, view analytics, or export data.
+To load a custom conversation log, update the load_document_data function with your JSON file path and structure.
 
-```python
-@st.cache_data
-def load_css():
-    return """
-    <style>
-    /* CSS styles for the application */
-    </style>
-    """
-```
+Project Structure
 
-### Response Templates
+app.py: Main Streamlit application with chatbot and analytics.
+requirements.txt: Python dependencies.
+README.md: Project documentation.
 
-The `load_response_templates` function loads predefined response templates for various mental health topics. Each template includes patterns to match user input and corresponding responses.
+Notes
 
-```python
-@st.cache_data
-def load_response_templates():
-    return {
-        "greetings": {
-            "patterns": ["hi", "hello", ...],
-            "responses": ["Hello! I'm your mental health buddy...", ...],
-            "follow_ups": ["Tell me more about how you've been feeling lately...", ...]
-        },
-        ...
-    }
-```
+Crisis Support: The app is not a substitute for professional mental health care. Crisis resources are provided for immediate support.
+LLM Integration: The current code uses a mock LLM response system. For advanced responses, integrate xAI's Grok API (see https://x.ai/api).
+Document Format: The sample document assumes a JSON list of entries with user_message, emotion, intent, and chatbot_response. Adjust mappings in map_document_emotion_to_scores and map_document_intent_to_category for your data.
 
-### SmartResponder Class
-
-The `SmartResponder` class is responsible for analyzing user input and generating appropriate responses based on the context of the conversation.
-
-#### Methods
-
-* **`__init__`**: Initializes the responder with response templates and conversation context.
-* **`analyze_input(user_input)`**: Analyzes the user's input to determine the most relevant category based on predefined patterns.
-* **`generate_response(user_input, category=None)`**: Generates a response based on the user's input and the identified category.
-
-### Session State Management
-
-The application uses Streamlit's session state to manage conversation history and the responder instance.
-
-```python
-if 'messages' not in st.session_state:
-    st.session_state.messages = []
-if 'responder' not in st.session_state:
-    st.session_state.responder = SmartResponder()
-```
-
-### User Interface
-
-The main interface includes a chat container for displaying messages, a text input for user input, and quick action buttons for common mental health topics.
-
-```python
-st.markdown('<div class="chat-container">', unsafe_allow_html=True)
-# Display recent messages
-for message in recent_messages:
-    ...
-st.markdown('</div>', unsafe_allow_html=True)
-
-user_input = st.text_input("Share what's on your mind...", ...)
-```
-
-### Quick Action Buttons
-
-Quick action buttons allow users to quickly express their feelings or concerns, which are then processed by the responder.
-
-```python
-quick_actions = [
-    ("😰 Feeling Anxious", "I'm feeling really anxious right now"),
-    ...
-]
-```
-
-### Footer and Debug Information
-
-The footer provides additional information about the application, and an optional debug section displays memory usage for troubleshooting.
-
-```python
-st.markdown("---")
-st.markdown("Made with ❤️ for Redeemers University Students | You're never alone in this journey!")
-
-if st.checkbox("Show Debug Info", value=False):
-    st.write(f"Messages in memory: {len(st.session_state.messages)}")
-    ...
-```
-
-## Usage Example
-
-1. Launch the application.
-2. Type a message in the input box or click a quick action button.
-3. The chatbot will respond based on the input, providing support and follow-up questions as needed.
-
-## Conclusion
-
-The RU Mental Health Buddy is a supportive tool for students, offering a safe space to discuss mental health concerns. The application is designed to be user-friendly and responsive, ensuring that students feel heard and supported.
+Contributing
+Contributions are welcome! Please open an issue or submit a pull request with improvements or bug fixes.
+License
+MIT License. See LICENSE for details.
