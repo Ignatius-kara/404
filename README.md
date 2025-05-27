@@ -1,16 +1,16 @@
 Mental Health Support Chatbot
-A Streamlit-based chatbot for mental health support, featuring mood/stress tracking, analytics, and crisis detection. It integrates conversation logs to address themes like self-forgiveness and relationships, with localization for Nigerian Pidgin.
+A Streamlit-based chatbot for mental health support, featuring mood/stress tracking, analytics, crisis detection, and Nigerian Pidgin localization. It integrates conversation logs to address themes like self-forgiveness and relationships.
 Features
 
-Chat Interface: Empathetic AI responses based on mood, stress, and conversation category.
+Chat Interface: AI responses based on mood, stress, and conversation category.
 Mood/Stress Tracking: Uses Hugging Face’s distilbert-base-uncased-emotion or TextBlob fallback.
 Analytics: Plotly charts for mood/stress trends and topic distribution, with crisis annotations.
-Crisis Detection: Provides localized support resources (e.g., Nigerian counseling numbers).
-Localization: Nigerian Pidgin responses for cultural sensitivity.
-Memory Optimization: Caching and data pruning for Streamlit Cloud compatibility.
+Crisis Detection: Localized support resources (e.g., Nigerian counseling numbers).
+Localization: Nigerian Pidgin responses.
+Memory Optimization: Caching and data pruning for Streamlit Cloud.
 Data Export: CSV downloads for mood data and chat history.
 Accessibility: ARIA labels and high-contrast design.
-Document Integration: Loads JSON conversation logs for analytics.
+Document Integration: Loads JSON conversation logs.
 
 Prerequisites
 
@@ -30,15 +30,16 @@ source venv/bin/activate  # Windows: venv\Scripts\activate
 
 
 Install dependencies:pip install --upgrade pip
-pip install torch==2.4.1+cpu -f https://download.pytorch.org/whl/torch_stable.html
-pip install -r requirements.txt
+bash setup.sh
 
 
 
 Deployment on Streamlit Cloud
 
 Push the repository to GitHub (public or private with Streamlit access).
-Create these files in the repo root:
+Ensure these files are in the repo root:
+app.py: Main application.
+requirements.txt: Python dependencies (excludes torch).
 runtime.txt:python-3.10
 
 
@@ -59,11 +60,10 @@ pip install -r requirements.txt
 
 In Streamlit Cloud:
 Create a new app, linking your GitHub repo.
-Set the Python version to 3.10 (via runtime.txt).
-Deploy and check the "Manage App" terminal for errors.
+Deploy and monitor the "Manage App" terminal.
 
 
-If errors occur, consult logs and see Troubleshooting.
+If errors occur, see Troubleshooting.
 
 Usage
 
@@ -72,23 +72,22 @@ Run locally:streamlit run app.py
 
 Access at http://localhost:8501.
 Chat, log mood/stress, view analytics, or export data.
-To use a custom conversation log, update load_document_data in app.py with your JSON file.
+Update load_document_data in app.py for custom JSON logs.
 
 Project Structure
 
 app.py: Main application.
-requirements.txt: Dependencies.
+requirements.txt: Dependencies (excludes torch).
 runtime.txt: Python version.
 packages.txt: System packages.
-setup.sh: Setup script.
+setup.sh: Installs torch and dependencies.
 README.md: Documentation.
 
 Troubleshooting
 
-Error installing requirements:
-Check "Manage App" terminal logs.
-Ensure torch==2.4.1+cpu is installed via setup.sh.
-Verify packages.txt includes necessary system libraries.
+No version of torch==2.4.1+cpu:
+Ensure setup.sh includes -f https://download.pytorch.org/whl/torch_stable.html.
+Verify torch installation in logs.
 
 
 ModuleNotFoundError: distutils:
@@ -96,19 +95,19 @@ Confirm python3-distutils in packages.txt.
 
 
 Failed building wheel:
-Add build-essential, python3-dev to packages.txt.
+Include build-essential, python3-dev in packages.txt.
 
 
 Memory issues:
-Use CPU-only torch and limit transformers model size.
+Use CPU-only torch and lightweight transformers model.
 
 
-Post issues on Streamlit forums with logs.
+Check "Manage App" logs and post on Streamlit forums.
 
 Notes
 
 Crisis Support: Not a substitute for professional care.
-LLM: Uses static responses; for advanced AI, integrate xAI’s Grok API (https://x.ai/api).
+LLM: Uses static responses; integrate xAI’s Grok API for advanced AI (https://x.ai/api).
 Document: Update load_document_data for your JSON structure.
 
 License
