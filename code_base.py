@@ -357,9 +357,9 @@ def get_ai_response(message, mood_score, stress_score, category):
 I'm very concerned about what you've shared. Please know that you matter and there are people who want to help:
 
 **Immediate Help:**
-• **National Suicide Prevention Lifeline: 988**
+• **Counselling numbers: +2348060623184, +2348139121197**
 • **Crisis Text Line: Text HOME to 741741**
-• **Emergency Services: 911**
+• **Redeemers University security Services:call & text Vincent at +2348032116599**
 
 **Online Resources:**
 • **SAMHSA: 1-800-662-4357**
