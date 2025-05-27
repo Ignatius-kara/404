@@ -1,0 +1,6 @@
+libblas-dev
+liblapack-dev
+g++
+python3-distutils
+build-essential
+python3-dev
