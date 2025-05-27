@@ -1,786 +1,623 @@
 import streamlit as st
-import json
-import random
-import re
-import gc
 import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import psutil
+import gc
 from datetime import datetime, timedelta
-from typing import Dict, List, Tuple, Optional
+import json
+import io
+from functools import lru_cache
+import hashlib
+import time
+from textblob import TextBlob
+import pickle
 
 # Page configuration
 st.set_page_config(
-    page_title="RU Mental Health Buddy",
-    page_icon="🌟",
+    page_title="Mental Health Support Chatbot",
+    page_icon="🧠",
     layout="wide",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="expanded"
 )
 
-# Memory management constants
-MAX_MESSAGES = 15  # Reduced from 20
-MAX_CONTEXT_LENGTH = 8  # Reduced from 10
-MAX_INPUT_LENGTH = 400  # Reduced from 500
-
-# Mood tracking constants
-MOOD_SCALE = {
-    "😢 Very Sad": 1,
-    "😔 Sad": 2,
-    "😐 Neutral": 3,
-    "🙂 Happy": 4,
-    "😄 Very Happy": 5
-}
-
-STRESS_LEVELS = {
-    "😌 Very Low": 1,
-    "🙂 Low": 2,
-    "😐 Moderate": 3,
-    "😰 High": 4,
-    "😱 Very High": 5
-}
-
-# Custom CSS for retro styling (optimized and cached)
-@st.cache_data(ttl=3600)  # Cache for 1 hour
-def load_css() -> str:
-    return """
-    <style>
-    .main {
-        background: linear-gradient(135deg, #FFF8E7 0%, #F5F5DC 100%);
+# Custom CSS with improved styling
+st.markdown("""
+<style>
+    .main-header {
+        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+        padding: 2rem;
+        border-radius: 10px;
+        text-align: center;
+        color: white;
+        margin-bottom: 2rem;
     }
-    
-    .stApp > header {
-        background-color: transparent;
+    .mood-card {
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        padding: 1rem;
+        border-radius: 10px;
+        text-align: center;
+        color: white;
+        margin: 0.5rem 0;
     }
-    
-    .chat-container {
-        background: rgba(255, 255, 255, 0.9);
-        border-radius: 20px;
-        padding: 20px;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.1);
-        border: 3px solid #FF6B35;
-        max-height: 400px;
-        overflow-y: auto;
-        margin-bottom: 20px;
+    .stress-card {
+        background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        padding: 1rem;
+        border-radius: 10px;
+        text-align: center;
+        color: white;
+        margin: 0.5rem 0;
     }
-    
+    .memory-card {
+        background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+        padding: 1rem;
+        border-radius: 10px;
+        text-align: center;
+        color: white;
+        margin: 0.5rem 0;
+    }
+    .chat-message {
+        padding: 1rem;
+        border-radius: 10px;
+        margin: 0.5rem 0;
+        animation: fadeIn 0.5s;
+    }
     .user-message {
-        background: linear-gradient(135deg, #4ECDC4 0%, #95E1D3 100%);
+        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
         color: white;
-        padding: 12px 18px;
-        border-radius: 20px 20px 5px 20px;
-        margin: 10px 0;
-        margin-left: 15%;
-        box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-        word-wrap: break-word;
-        font-size: 0.9em;
     }
-    
     .bot-message {
-        background: linear-gradient(135deg, #FF6B35 0%, #FFA500 100%);
-        color: white;
-        padding: 12px 18px;
-        border-radius: 20px 20px 20px 5px;
-        margin: 10px 0;
-        margin-right: 15%;
-        box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-        word-wrap: break-word;
-        font-size: 0.9em;
+        background: #f0f2f6;
+        color: #262730;
+        border-left: 4px solid #667eea;
     }
-    
-    .title {
-        font-family: 'Comic Sans MS', cursive;
-        color: #2C3E50;
-        text-align: center;
-        font-size: 2.5em;
-        margin-bottom: 10px;
-        text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
-    }
-    
-    .subtitle {
-        font-family: 'Arial', sans-serif;
-        color: #FF6B35;
-        text-align: center;
-        font-size: 1.1em;
-        margin-bottom: 20px;
-    }
-    
-    div.stButton > button {
-        background: linear-gradient(135deg, #FF6B35 0%, #FFA500 100%);
-        color: white;
-        border: none;
-        border-radius: 25px;
-        padding: 10px 20px;
-        font-weight: bold;
-        font-size: 0.85em;
-        box-shadow: 0 5px 15px rgba(0,0,0,0.2);
-        transition: all 0.3s ease;
-        width: 100%;
-    }
-    
-    div.stButton > button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 8px 20px rgba(0,0,0,0.3);
-    }
-    
-    .memory-info {
-        background: rgba(255, 255, 255, 0.8);
-        padding: 10px;
-        border-radius: 10px;
-        margin-top: 10px;
-        font-size: 0.8em;
-        color: #666;
-    }
-    
     .crisis-alert {
-        background: #FF4444;
-        color: white;
-        padding: 15px;
+        background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%);
+        border: 2px solid #ff6b6b;
+        padding: 1rem;
         border-radius: 10px;
-        margin: 10px 0;
-        font-weight: bold;
         text-align: center;
+        margin: 1rem 0;
     }
-    
-    .mood-tracker {
-        background: rgba(255, 255, 255, 0.9);
-        border-radius: 15px;
-        padding: 15px;
-        margin: 10px 0;
-        border: 2px solid #4ECDC4;
+    @keyframes fadeIn {
+        from {opacity: 0; transform: translateY(10px);}
+        to {opacity: 1; transform: translateY(0);}
     }
-    
-    .analytics-panel {
-        background: rgba(255, 255, 255, 0.95);
-        border-radius: 15px;
-        padding: 20px;
-        margin: 15px 0;
-        border: 2px solid #FF6B35;
+    .metric-container {
+        display: flex;
+        justify-content: space-around;
+        margin: 1rem 0;
     }
-    
-    .system-monitor {
-        background: rgba(240, 240, 240, 0.9);
-        border-radius: 10px;
-        padding: 12px;
-        margin: 8px 0;
-        font-family: monospace;
-        font-size: 0.75em;
-    }
-    </style>
-    """
+    .trend-up { color: #28a745; }
+    .trend-down { color: #dc3545; }
+    .trend-stable { color: #ffc107; }
+</style>
+""", unsafe_allow_html=True)
 
-# Enhanced response system with memory optimization
-@st.cache_data(ttl=1800)  # Cache for 30 minutes
-def load_response_templates() -> Dict:
-    return {
-        "greetings": {
-            "patterns": ["hi", "hello", "hey", "good morning", "good afternoon", "good evening", "howdy", "greetings"],
-            "responses": [
-                "Hello! I'm your mental health buddy at RU. How are you feeling today? 😊",
-                "Hi there! Welcome to your safe space. What's on your mind? 🌟",
-                "Hey! I'm here to support you. How can I help? 💙"
-            ],
-            "follow_ups": ["Tell me more about how you've been feeling.", "What brought you here today?", "Is there something specific you'd like to discuss?"]
-        },
-        "academic_stress": {
-            "patterns": ["exam", "test", "study", "grade", "academic", "assignment", "homework", "finals", "midterm", "gpa", "failing", "pressure"],
-            "responses": [
-                "Exam stress can feel overwhelming. Your worth isn't defined by grades. 📚 Try breaking study sessions into 25-minute chunks with 5-minute breaks?",
-                "Academic pressure is real at RU. You're not alone. 💪 Would you like some study techniques that help other students?",
-                "Academic stress is normal. Let's work through coping strategies. What subject is causing the most stress?"
-            ],
-            "follow_ups": ["What's your biggest study challenge?", "How many hours are you studying daily?", "Have you talked with professors about support?"]
-        },
-        "anxiety": {
-            "patterns": ["anxious", "anxiety", "worry", "worried", "nervous", "panic", "overwhelmed", "stressed", "tense", "restless"],
-            "responses": [
-                "Anxiety is overwhelming, but you're brave for reaching out. 🌸 Try breathing: in for 4, hold for 4, out for 6. Want to try together?",
-                "Many RU students experience anxiety - you're not alone. 🤗 Let's share grounding techniques. What's triggering your anxiety?",
-                "Your feelings are valid. Let's work through this step by step - what's one small thing we can focus on now?"
-            ],
-            "follow_ups": ["What physical sensations do you notice?", "When did this feeling start?", "What usually helps you feel calmer?"]
-        },
-        "loneliness": {
-            "patterns": ["lonely", "alone", "isolated", "friends", "social", "connection", "miss", "homesick", "withdrawn"],
-            "responses": [
-                "Loneliness at university is common - you're not alone in feeling alone. 💕 Are there campus activities that interest you?",
-                "Loneliness is tough when adjusting to university. 🌱 Consider study groups or volunteering? Helping others helps us connect.",
-                "Your feelings are valid. Connection is a basic need. 🤝 Want suggestions for meeting like-minded people on campus?"
-            ],
-            "follow_ups": ["What friendships are you looking for?", "Have you reached out to classmates?", "What activities did you enjoy before RU?"]
-        },
-        "spiritual": {
-            "patterns": ["god", "faith", "spiritual", "pray", "prayer", "church", "believe", "doubt", "purpose", "meaning", "soul"],
-            "responses": [
-                "Spiritual questions are natural parts of growth. 🙏 Many RU students navigate similar feelings. What's troubling your heart?",
-                "At RU, spiritual wellness is crucial. 🕊️ Questions are okay. What aspect of your spirituality would you like to explore?",
-                "Spiritual struggles feel isolating but are often part of deeper growth. ✨ What's been weighing on your spirit?"
-            ],
-            "follow_ups": ["Have you spoken with campus chaplains?", "What practices usually bring you peace?", "How has your spiritual journey changed at RU?"]
-        },
-        "depression": {
-            "patterns": ["depressed", "sad", "hopeless", "empty", "worthless", "tired", "exhausted", "numb", "dark", "heavy"],
-            "responses": [
-                "I hear you. What you're feeling matters. 💙 Depression makes everything heavy. You're brave for reaching out. What's been hardest?",
-                "Thank you for trusting me. 🌟 Depression feels unchanging, but small steps help. How are your sleep and eating?",
-                "These feelings are real and valid. Seeking support shows strength. 💪 What's brought you even a moment of relief recently?"
-            ],
-            "follow_ups": ["Have you talked to anyone else about this?", "What does a typical day look like now?", "Are you getting professional support?"]
-        },
-        "crisis": {
-            "patterns": ["kill", "suicide", "die", "death", "hurt myself", "end it all", "not worth living", "better off dead", "can't go on"],
-            "responses": [
-                "🚨 I'm deeply concerned. Your life has tremendous value. Please contact RU Counseling Center or emergency services immediately. You don't have to face this alone.",
-                "🚨 Your pain is real, but help is available. Contact RU Counseling, campus security, or emergency services right away. Your life matters immensely.",
-                "🚨 I care about your safety. Please reach out to someone you trust or contact campus security immediately. These feelings can change with support."
-            ],
-            "follow_ups": ["Are you safe right now?", "Is there a trusted adult you can call?", "Can I help you find immediate professional help?"],
-            "is_crisis": True
-        },
-        "general_support": {
-            "patterns": ["help", "support", "advice", "guidance", "confused", "lost", "stuck"],
-            "responses": [
-                "I'm glad you reached out. 🌟 Seeking help shows strength. You've taken the most important step. What's on your mind?",
-                "You're doing better than you think. 💪 Every small step counts, including coming here. What would help most to discuss?",
-                "It's okay to not be okay sometimes. 🤗 You're here seeking support, and I'm here to listen. What's been weighing on you?"
-            ],
-            "follow_ups": ["What's been your biggest challenge this week?", "How have you been caring for yourself?", "What support feels most helpful?"]
-        }
+# Initialize session state with caching optimization
+def initialize_session_state():
+    """Initialize session state with optimized default values"""
+    defaults = {
+        'messages': [],
+        'mood_data': pd.DataFrame(columns=['timestamp', 'mood', 'stress', 'category']),
+        'conversation_count': 0,
+        'user_name': '',
+        'current_mood': 3,
+        'crisis_detected': False,
+        'last_mood_check': None,
+        'cache_hits': 0,
+        'memory_optimized': False
     }
-
-# Optimized Smart Responder with memory management
-class SmartResponder:
-    def __init__(self):
-        self.templates = load_response_templates()
-        self.conversation_context = []
-        self.crisis_detected = False
-        
-    def cleanup_memory(self):
-        """Clean up memory by limiting context size"""
-        if len(self.conversation_context) > MAX_CONTEXT_LENGTH:
-            self.conversation_context = self.conversation_context[-MAX_CONTEXT_LENGTH:]
-        gc.collect()  # Force garbage collection
-        
-    def analyze_input(self, user_input: str) -> Tuple[str, bool]:
-        """Analyze user input and return category and crisis flag"""
-        user_input = user_input.lower().strip()
-        
-        # Score each category efficiently
-        category_scores = {}
-        is_crisis = False
-        
-        for category, data in self.templates.items():
-            score = 0
-            for pattern in data["patterns"]:
-                if pattern in user_input:
-                    score += len(pattern) * user_input.count(pattern)
-            category_scores[category] = score
-            
-            # Check for crisis indicators
-            if category == "crisis" and score > 0:
-                is_crisis = True
-        
-        # Return highest scoring category or general_support
-        best_category = max(category_scores, key=category_scores.get) if max(category_scores.values()) > 0 else "general_support"
-        return best_category, is_crisis
     
-    def generate_response(self, user_input: str) -> Tuple[str, str, bool]:
-        """Generate intelligent response with crisis detection"""
-        category, is_crisis = self.analyze_input(user_input)
-        template_data = self.templates[category]
-        
-        # Handle crisis situations
-        if is_crisis:
-            self.crisis_detected = True
-        
-        # Choose response avoiding recent repeats
-        available_responses = [r for r in template_data["responses"] 
-                             if r not in self.conversation_context[-3:]]
-        if not available_responses:
-            available_responses = template_data["responses"]
-        
-        response = random.choice(available_responses)
-        
-        # Add follow-up question occasionally (reduced frequency)
-        if random.random() < 0.25 and "follow_ups" in template_data:
-            follow_up = random.choice(template_data["follow_ups"])
-            response += f"\n\n{follow_up}"
-        
-        # Update context and clean memory
-        self.conversation_context.append(response)
-        self.cleanup_memory()
-        
-        return response, category, is_crisis
+    for key, value in defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = value
 
-# Analytics and Data Management Functions
+# Memory management and caching functions
+@st.cache_data(ttl=300, max_entries=100)  # Cache for 5 minutes, max 100 entries
 def get_system_memory_info():
-    """Get current system memory information"""
+    """Get system memory information with caching"""
     memory = psutil.virtual_memory()
     return {
-        'total': memory.total / (1024**3),  # GB
-        'available': memory.available / (1024**3),  # GB
-        'percent': memory.percent,
-        'used': memory.used / (1024**3)  # GB
+        'total': round(memory.total / (1024**3), 2),
+        'available': round(memory.available / (1024**3), 2),
+        'used': round(memory.used / (1024**3), 2),
+        'percent': memory.percent
     }
 
-def initialize_mood_data():
-    """Initialize mood tracking data structure"""
-    if 'mood_data' not in st.session_state:
-        st.session_state.mood_data = pd.DataFrame(columns=[
-            'timestamp', 'mood_score', 'stress_level', 'category', 'message_length'
-        ])
+@lru_cache(maxsize=128)
+def hash_text(text):
+    """Create hash for text caching"""
+    return hashlib.md5(text.encode()).hexdigest()
 
-def add_mood_entry(mood_score, stress_level, category, message_length):
-    """Add a new mood entry to the tracking data"""
+@st.cache_data(ttl=600, max_entries=50)  # Cache for 10 minutes
+def analyze_mood_from_text(text):
+    """Analyze mood from text with caching"""
+    if not text or len(text.strip()) < 3:
+        return 3, 3  # neutral defaults
+    
+    try:
+        # Use TextBlob for sentiment analysis
+        blob = TextBlob(text.lower())
+        sentiment = blob.sentiment
+        
+        # Convert polarity (-1 to 1) to mood scale (1-5)
+        mood_score = max(1, min(5, int((sentiment.polarity + 1) * 2 + 1)))
+        
+        # Stress indicators
+        stress_keywords = ['stress', 'anxious', 'worried', 'panic', 'overwhelm', 'pressure']
+        crisis_keywords = ['suicide', 'kill myself', 'end it all', 'worthless', 'hopeless']
+        
+        text_lower = text.lower()
+        stress_score = 3  # default
+        
+        if any(word in text_lower for word in crisis_keywords):
+            stress_score = 5
+            mood_score = 1
+        elif any(word in text_lower for word in stress_keywords):
+            stress_score = 4
+        elif sentiment.polarity < -0.3:
+            stress_score = 4
+        elif sentiment.polarity > 0.3:
+            stress_score = 2
+            
+        return mood_score, stress_score
+        
+    except Exception:
+        return 3, 3
+
+@st.cache_data(ttl=300)
+def calculate_trends(mood_data):
+    """Calculate mood and stress trends with caching"""
+    if len(mood_data) < 2:
+        return {"mood_trend": "stable", "stress_trend": "stable", "mood_change": 0, "stress_change": 0}
+    
+    recent_data = mood_data.tail(10)  # Last 10 entries
+    older_data = mood_data.head(max(1, len(mood_data) - 10))
+    
+    if len(older_data) == 0:
+        return {"mood_trend": "stable", "stress_trend": "stable", "mood_change": 0, "stress_change": 0}
+    
+    recent_mood_avg = recent_data['mood'].mean()
+    recent_stress_avg = recent_data['stress'].mean()
+    older_mood_avg = older_data['mood'].mean()
+    older_stress_avg = older_data['stress'].mean()
+    
+    mood_change = recent_mood_avg - older_mood_avg
+    stress_change = recent_stress_avg - older_stress_avg
+    
+    mood_trend = "improving" if mood_change > 0.2 else "declining" if mood_change < -0.2 else "stable"
+    stress_trend = "improving" if stress_change < -0.2 else "worsening" if stress_change > 0.2 else "stable"
+    
+    return {
+        "mood_trend": mood_trend,
+        "stress_trend": stress_trend,
+        "mood_change": round(mood_change, 2),
+        "stress_change": round(stress_change, 2)
+    }
+
+@st.cache_data(ttl=300, max_entries=20)
+def create_mood_chart(mood_data):
+    """Create mood trend chart with caching"""
+    if mood_data.empty:
+        return None
+    
+    fig = make_subplots(
+        rows=2, cols=1,
+        subplot_titles=('Mood Trends', 'Stress Levels'),
+        vertical_spacing=0.1
+    )
+    
+    # Mood trend
+    fig.add_trace(
+        go.Scatter(
+            x=mood_data['timestamp'],
+            y=mood_data['mood'],
+            mode='lines+markers',
+            name='Mood',
+            line=dict(color='#667eea', width=3),
+            marker=dict(size=8)
+        ),
+        row=1, col=1
+    )
+    
+    # Stress trend
+    fig.add_trace(
+        go.Scatter(
+            x=mood_data['timestamp'],
+            y=mood_data['stress'],
+            mode='lines+markers',
+            name='Stress',
+            line=dict(color='#f093fb', width=3),
+            marker=dict(size=8)
+        ),
+        row=2, col=1
+    )
+    
+    fig.update_layout(
+        height=500,
+        showlegend=True,
+        title_text="Mood & Stress Analytics",
+        title_x=0.5
+    )
+    
+    fig.update_xaxes(title_text="Time")
+    fig.update_yaxes(title_text="Mood (1-5)", row=1, col=1)
+    fig.update_yaxes(title_text="Stress (1-5)", row=2, col=1)
+    
+    return fig
+
+@st.cache_data(ttl=600)
+def create_category_chart(mood_data):
+    """Create category distribution chart with caching"""
+    if mood_data.empty:
+        return None
+    
+    category_counts = mood_data['category'].value_counts()
+    
+    fig = px.pie(
+        values=category_counts.values,
+        names=category_counts.index,
+        title="Conversation Topics Distribution",
+        color_discrete_sequence=px.colors.qualitative.Set3
+    )
+    
+    fig.update_traces(textposition='inside', textinfo='percent+label')
+    fig.update_layout(height=400)
+    
+    return fig
+
+def optimize_memory():
+    """Optimize memory usage with enhanced techniques"""
+    if not st.session_state.get('memory_optimized', False):
+        # Limit mood data to last 100 entries
+        if len(st.session_state.mood_data) > 100:
+            st.session_state.mood_data = st.session_state.mood_data.tail(100).reset_index(drop=True)
+        
+        # Limit messages to last 50
+        if len(st.session_state.messages) > 50:
+            st.session_state.messages = st.session_state.messages[-50:]
+        
+        # Force garbage collection
+        gc.collect()
+        
+        # Clear specific caches if memory usage is high
+        memory_info = get_system_memory_info()
+        if memory_info['percent'] > 80:
+            st.cache_data.clear()
+            st.session_state.cache_hits = 0
+        
+        st.session_state.memory_optimized = True
+
+def categorize_conversation(message):
+    """Categorize conversation type with caching"""
+    categories = {
+        'anxiety': ['anxious', 'worry', 'nervous', 'panic', 'fear'],
+        'depression': ['sad', 'depressed', 'hopeless', 'empty', 'worthless'],
+        'stress': ['stress', 'pressure', 'overwhelm', 'burden', 'exhausted'],
+        'relationships': ['relationship', 'family', 'friends', 'partner', 'social'],
+        'work': ['work', 'job', 'career', 'boss', 'colleague'],
+        'general': []
+    }
+    
+    message_lower = message.lower()
+    for category, keywords in categories.items():
+        if any(keyword in message_lower for keyword in keywords):
+            return category
+    return 'general'
+
+def detect_crisis(message):
+    """Enhanced crisis detection with caching"""
+    crisis_keywords = [
+        'suicide', 'kill myself', 'end it all', 'not worth living',
+        'better off dead', 'want to die', 'end my life', 'hurt myself',
+        'self harm', 'cut myself', 'overdose', 'jumping'
+    ]
+    
+    message_lower = message.lower()
+    return any(keyword in message_lower for keyword in crisis_keywords)
+
+@lru_cache(maxsize=256)
+def get_ai_response(message, mood_score, stress_score, category):
+    """Generate AI response with caching based on input parameters"""
+    st.session_state.cache_hits += 1
+    
+    base_responses = {
+        'anxiety': [
+            "I understand you're feeling anxious. Let's try some breathing exercises together. Take a deep breath in for 4 counts, hold for 4, and exhale for 6.",
+            "Anxiety can feel overwhelming, but remember that these feelings are temporary. What's one small thing that usually helps you feel calmer?",
+            "When anxiety strikes, grounding techniques can help. Can you name 5 things you can see around you right now?"
+        ],
+        'depression': [
+            "I hear that you're going through a difficult time. Your feelings are valid, and it's okay to not be okay sometimes.",
+            "Depression can make everything feel harder. Have you been able to do any small self-care activities today?",
+            "Remember that seeking help is a sign of strength, not weakness. You don't have to go through this alone."
+        ],
+        'stress': [
+            "Stress can be really challenging to manage. What's been the biggest source of stress for you lately?",
+            "Let's work on breaking down what's stressing you into smaller, manageable pieces. What feels most urgent right now?",
+            "Stress affects everyone differently. Have you tried any relaxation techniques that work for you?"
+        ],
+        'relationships': [
+            "Relationships can be complex and emotionally challenging. It sounds like you're dealing with some difficult dynamics.",
+            "Communication is key in relationships. Have you been able to express how you're feeling to the people involved?",
+            "Setting healthy boundaries is important for your mental health. What boundaries do you think might help in this situation?"
+        ],
+        'work': [
+            "Work-related stress is very common. It's important to find ways to manage it before it affects your overall well-being.",
+            "Workplace challenges can impact our mental health significantly. Have you considered speaking with HR or a supervisor about your concerns?",
+            "Work-life balance is crucial. What's one thing you could do today to create better boundaries between work and personal time?"
+        ]
+    }
+    
+    crisis_response = """🚨 **CRISIS SUPPORT RESOURCES** 🚨
+    
+I'm very concerned about what you've shared. Please know that you matter and there are people who want to help:
+
+**Immediate Help:**
+• **National Suicide Prevention Lifeline: 988**
+• **Crisis Text Line: Text HOME to 741741**
+• **Emergency Services: 911**
+
+**Online Resources:**
+• **SAMHSA: 1-800-662-4357**
+• **Crisis Chat: suicidepreventionlifeline.org**
+
+You don't have to go through this alone. Professional counselors are available 24/7 and want to help you through this difficult time."""
+
+    if detect_crisis(message):
+        return crisis_response
+    
+    # Adjust response based on mood and stress
+    responses = base_responses.get(category, [
+        "Thank you for sharing that with me. I'm here to listen and support you.",
+        "It sounds like you're dealing with something important. Would you like to tell me more about how you're feeling?",
+        "I appreciate you opening up. What would be most helpful for you right now?"
+    ])
+    
+    # Select response based on mood/stress levels
+    if mood_score <= 2 or stress_score >= 4:
+        response_idx = 0  # More supportive response
+    elif mood_score >= 4 and stress_score <= 2:
+        response_idx = min(2, len(responses) - 1)  # More encouraging response
+    else:
+        response_idx = 1  # Balanced response
+    
+    return responses[response_idx]
+
+def log_mood_data(mood, stress, category):
+    """Log mood data with memory optimization"""
     new_entry = pd.DataFrame({
         'timestamp': [datetime.now()],
-        'mood_score': [mood_score],
-        'stress_level': [stress_level],
-        'category': [category],
-        'message_length': [message_length]
+        'mood': [mood],
+        'stress': [stress],
+        'category': [category]
     })
+    
     st.session_state.mood_data = pd.concat([st.session_state.mood_data, new_entry], ignore_index=True)
     
-    # Keep only recent entries to manage memory
-    if len(st.session_state.mood_data) > 100:
-        st.session_state.mood_data = st.session_state.mood_data.tail(100)
+    # Auto-optimize memory every 10 entries
+    if len(st.session_state.mood_data) % 10 == 0:
+        optimize_memory()
 
-def analyze_mood_trends():
-    """Analyze mood trends using numpy and pandas"""
-    if len(st.session_state.mood_data) < 2:
-        return None
+def export_data_as_csv(data, filename_prefix):
+    """Export data as CSV with timestamp"""
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"{filename_prefix}_{timestamp}.csv"
     
-    df = st.session_state.mood_data.copy()
-    df['date'] = df['timestamp'].dt.date
-    
-    # Daily averages
-    daily_mood = df.groupby('date').agg({
-        'mood_score': 'mean',
-        'stress_level': 'mean'
-    }).reset_index()
-    
-    # Trend analysis using numpy
-    if len(daily_mood) >= 3:
-        days = np.arange(len(daily_mood))
-        mood_trend = np.polyfit(days, daily_mood['mood_score'], 1)[0]
-        stress_trend = np.polyfit(days, daily_mood['stress_level'], 1)[0]
-        
-        return {
-            'daily_data': daily_mood,
-            'mood_trend': mood_trend,
-            'stress_trend': stress_trend,
-            'avg_mood': np.mean(daily_mood['mood_score']),
-            'avg_stress': np.mean(daily_mood['stress_level'])
-        }
-    return None
+    csv_buffer = io.StringIO()
+    data.to_csv(csv_buffer, index=False)
+    return csv_buffer.getvalue(), filename
 
-def create_mood_visualization():
-    """Create mood tracking visualizations using Plotly"""
-    if len(st.session_state.mood_data) < 2:
-        st.info("Need at least 2 mood entries to show trends.")
-        return
+# Main application
+def main():
+    initialize_session_state()
     
-    analysis = analyze_mood_trends()
-    if not analysis:
-        st.info("Need at least 3 days of data to show trends.")
-        return
-    
-    daily_data = analysis['daily_data']
-    
-    # Create subplot with secondary y-axis
-    fig = go.Figure()
-    
-    # Mood line
-    fig.add_trace(go.Scatter(
-        x=daily_data['date'],
-        y=daily_data['mood_score'],
-        mode='lines+markers',
-        name='Mood Score',
-        line=dict(color='#4ECDC4', width=3),
-        marker=dict(size=8)
-    ))
-    
-    # Stress line
-    fig.add_trace(go.Scatter(
-        x=daily_data['date'],
-        y=daily_data['stress_level'],
-        mode='lines+markers',
-        name='Stress Level',
-        line=dict(color='#FF6B35', width=3),
-        marker=dict(size=8),
-        yaxis='y2'
-    ))
-    
-    # Update layout
-    fig.update_layout(
-        title='Your Mental Health Journey',
-        xaxis_title='Date',
-        yaxis=dict(
-            title='Mood Score',
-            titlefont=dict(color='#4ECDC4'),
-            tickfont=dict(color='#4ECDC4'),
-            range=[1, 5]
-        ),
-        yaxis2=dict(
-            title='Stress Level',
-            titlefont=dict(color='#FF6B35'),
-            tickfont=dict(color='#FF6B35'),
-            anchor='x',
-            overlaying='y',
-            side='right',
-            range=[1, 5]
-        ),
-        hovermode='x unified',
-        height=400
-    )
-    
-    st.plotly_chart(fig, use_container_width=True)
-    
-    # Show insights
-    col1, col2 = st.columns(2)
-    with col1:
-        trend_emoji = "📈" if analysis['mood_trend'] > 0 else "📉" if analysis['mood_trend'] < 0 else "➡️"
-        st.metric(
-            "Mood Trend", 
-            f"{trend_emoji} {analysis['mood_trend']:.2f}/day",
-            f"Avg: {analysis['avg_mood']:.1f}/5"
-        )
-    
-    with col2:
-        stress_emoji = "📈" if analysis['stress_trend'] > 0 else "📉" if analysis['stress_trend'] < 0 else "➡️"
-        st.metric(
-            "Stress Trend", 
-            f"{stress_emoji} {analysis['stress_trend']:.2f}/day",
-            f"Avg: {analysis['avg_stress']:.1f}/5"
-        )
-
-def export_data_to_csv():
-    """Export conversation and mood data to CSV"""
-    if len(st.session_state.mood_data) == 0:
-        st.warning("No mood data to export.")
-        return None
-    
-    # Prepare conversation data
-    messages_df = pd.DataFrame(st.session_state.messages)
-    messages_df['timestamp'] = datetime.now()
-    messages_df['session_id'] = 'current_session'
-    
-    # Create export data
-    export_data = {
-        'mood_data': st.session_state.mood_data,
-        'messages': messages_df,
-        'export_timestamp': datetime.now().isoformat()
-    }
-    
-    return export_data
-
-# Memory management for session state
-def cleanup_session_state():
-    """Clean up session state to manage memory"""
-    if 'messages' in st.session_state and len(st.session_state.messages) > MAX_MESSAGES:
-        st.session_state.messages = st.session_state.messages[-MAX_MESSAGES:]
-    gc.collect()
-
-# Initialize session state with optimization
-if 'messages' not in st.session_state:
-    st.session_state.messages = []
-if 'responder' not in st.session_state:
-    st.session_state.responder = SmartResponder()
-if 'crisis_mode' not in st.session_state:
-    st.session_state.crisis_mode = False
-
-# Initialize mood tracking
-initialize_mood_data()
-
-# Clean up memory periodically
-cleanup_session_state()
-
-# App header
-st.markdown(load_css(), unsafe_allow_html=True)
-st.markdown('<p class="title">🌟 RU Mental Health Buddy 🌟</p>', unsafe_allow_html=True)
-st.markdown('<p class="subtitle">Your compassionate companion at Redeemers University</p>', unsafe_allow_html=True)
-
-# Crisis alert banner
-if st.session_state.crisis_mode:
-    st.markdown('''
-    <div class="crisis-alert">
-    🆘 CRISIS SUPPORT NEEDED 🆘<br>
-    If you're in immediate danger, please contact:<br>
-    • Campus Security: +234-XXX-XXXX<br>
-    • Emergency Services: 199 or 911<br>
-    • RU Counseling Center: +234-XXX-XXXX
-    </div>
-    ''', unsafe_allow_html=True)
-
-# Optimized sidebar
-with st.sidebar:
-    st.markdown("### 🆘 Emergency Resources")
+    # Header
     st.markdown("""
-    **Campus Counseling Center**  
-    📞 +234-XXX-XXXX  
-    
-    **Campus Security**  
-    📞 +234-XXX-XXXX  
-    
-    **National Crisis Hotline**  
-    📞 +234-XXX-XXXX  
-    
-    **Emergency Services**  
-    📞 199 (Police) / 911 (Medical)
-    """)
-    
-    st.markdown("---")
-    
-    # System Memory Monitor
-    memory_info = get_system_memory_info()
-    st.markdown("### 🖥️ System Monitor")
-    st.markdown(f'''
-    <div class="system-monitor">
-    <strong>Memory Usage:</strong><br>
-    Used: {memory_info["used"]:.1f}GB / {memory_info["total"]:.1f}GB<br>
-    Available: {memory_info["available"]:.1f}GB<br>
-    Usage: {memory_info["percent"]:.1f}%
+    <div class="main-header">
+        <h1>🧠 Mental Health Support Chatbot</h1>
+        <p>Your AI companion for mental wellness with advanced analytics</p>
     </div>
-    ''', unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
     
-    # Control buttons
-    if st.button("🔄 Clear Chat History"):
-        st.session_state.messages = []
-        st.session_state.responder = SmartResponder()
-        st.session_state.crisis_mode = False
-        gc.collect()
-        st.rerun()
-    
-    if st.button("🧹 Free Memory"):
-        cleanup_session_state()
-        st.session_state.responder.cleanup_memory()
-        gc.collect()
-        st.success("Memory cleaned!")
-    
-    # Data export
-    st.markdown("---")
-    st.markdown("### 📊 Data Export")
-    if st.button("📥 Export to CSV"):
-        export_data = export_data_to_csv()
-        if export_data:
-            # Convert mood data to CSV
-            csv_mood = export_data['mood_data'].to_csv(index=False)
-            st.download_button(
-                label="Download Mood Data",
-                data=csv_mood,
-                file_name=f"mood_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                mime="text/csv"
-            )
+    # Sidebar with enhanced features
+    with st.sidebar:
+        st.header("📊 Analytics Dashboard")
+        
+        # Memory and performance info
+        memory_info = get_system_memory_info()
+        st.markdown(f"""
+        <div class="memory-card">
+            <h4>💾 System Memory</h4>
+            <p>Used: {memory_info['used']} GB / {memory_info['total']} GB</p>
+            <p>Usage: {memory_info['percent']:.1f}%</p>
+            <p>Cache Hits: {st.session_state.cache_hits}</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Mood statistics
+        if not st.session_state.mood_data.empty:
+            avg_mood = st.session_state.mood_data['mood'].mean()
+            avg_stress = st.session_state.mood_data['stress'].mean()
+            trends = calculate_trends(st.session_state.mood_data)
             
-            # Convert messages to CSV
-            csv_messages = export_data['messages'].to_csv(index=False)
-            st.download_button(
-                label="Download Chat History",
-                data=csv_messages,
-                file_name=f"chat_history_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                mime="text/csv"
-            )
-
-# Main chat interface
-st.markdown('<div class="chat-container">', unsafe_allow_html=True)
-
-# Display recent chat history (optimized)
-recent_messages = st.session_state.messages[-8:] if len(st.session_state.messages) > 8 else st.session_state.messages
-
-for message in recent_messages:
-    content = message["content"][:300] + "..." if len(message["content"]) > 300 else message["content"]  # Truncate long messages
-    if message["role"] == "user":
-        st.markdown(f'<div class="user-message">{content}</div>', unsafe_allow_html=True)
-    else:
-        st.markdown(f'<div class="bot-message">{content}</div>', unsafe_allow_html=True)
-
-st.markdown('</div>', unsafe_allow_html=True)
-
-# User input with improved handling
-user_input = st.text_input("Share what's on your mind...", 
-                          key="user_input", 
-                          placeholder="Type your message here...",
-                          max_chars=MAX_INPUT_LENGTH)
-
-# Process user input
-if user_input and user_input.strip():
-    # Limit input processing for memory efficiency
-    cleaned_input = user_input.strip()[:MAX_INPUT_LENGTH]
-    
-    # Add user message
-    st.session_state.messages.append({"role": "user", "content": cleaned_input})
-    
-    # Generate intelligent response
-    bot_response, category, is_crisis = st.session_state.responder.generate_response(cleaned_input)
-    
-    # Handle crisis detection
-    if is_crisis:
-        st.session_state.crisis_mode = True
-    
-    # Add bot response
-    st.session_state.messages.append({"role": "assistant", "content": bot_response})
-    
-    # Store analytics data
-    mood_score = np.random.choice([2, 3, 4], p=[0.3, 0.4, 0.3])  # Simplified mood inference
-    stress_level = 4 if is_crisis else np.random.choice([2, 3, 4], p=[0.4, 0.4, 0.2])
-    
-    add_mood_entry(
-        mood_score=mood_score,
-        stress_level=stress_level,
-        category=category,
-        message_length=len(cleaned_input)
-    )
-    
-    # Clean up and rerun
-    cleanup_session_state()
-    st.rerun()
-
-# Mood Tracking Section
-st.markdown("---")
-st.markdown('<div class="mood-tracker">', unsafe_allow_html=True)
-st.markdown("### 🎭 Quick Mood Check")
-
-col1, col2, col3 = st.columns(3)
-
-with col1:
-    st.markdown("**How are you feeling?**")
-    mood_input = st.selectbox("Select your mood:", list(MOOD_SCALE.keys()), key="mood_select")
-
-with col2:
-    st.markdown("**Stress level?**")
-    stress_input = st.selectbox("Select stress level:", list(STRESS_LEVELS.keys()), key="stress_select")
-
-with col3:
-    st.markdown("**Track it!**")
-    if st.button("📊 Log Mood", key="log_mood"):
-        add_mood_entry(
-            mood_score=MOOD_SCALE[mood_input],
-            stress_level=STRESS_LEVELS[stress_input],
-            category="manual_entry",
-            message_length=0
-        )
-        st.success("Mood logged successfully!")
-        st.rerun()
-
-st.markdown('</div>', unsafe_allow_html=True)
-
-# Quick action buttons (optimized layout)
-st.markdown("### Quick Help")
-col1, col2 = st.columns(2)
-
-quick_actions = [
-    ("😰 Feeling Anxious", "I'm feeling really anxious right now"),
-    ("📚 Study Stress", "I'm overwhelmed with my studies and exams"),
-    ("😢 Feeling Lonely", "I feel lonely and isolated at university"),
-    ("🙏 Spiritual Questions", "I'm having some spiritual doubts and questions")
-]
-
-for i, (button_text, message) in enumerate(quick_actions):
-    col = col1 if i % 2 == 0 else col2
-    with col:
-        if st.button(button_text, key=f"quick_{i}"):
-            st.session_state.messages.append({"role": "user", "content": message})
-            bot_response, category, is_crisis = st.session_state.responder.generate_response(message)
+            mood_emoji = "😊" if avg_mood >= 4 else "😐" if avg_mood >= 3 else "😔"
+            stress_emoji = "😌" if avg_stress <= 2 else "😰" if avg_stress >= 4 else "🤔"
             
-            if is_crisis:
-                st.session_state.crisis_mode = True
-                
-            st.session_state.messages.append({"role": "assistant", "content": bot_response})
+            trend_mood_icon = "📈" if trends['mood_trend'] == 'improving' else "📉" if trends['mood_trend'] == 'declining' else "➡️"
+            trend_stress_icon = "📉" if trends['stress_trend'] == 'improving' else "📈" if trends['stress_trend'] == 'worsening' else "➡️"
             
-            # Add analytics data for quick actions
-            mood_score = np.random.choice([2, 3, 4], p=[0.4, 0.3, 0.3])
-            stress_level = 4 if is_crisis else np.random.choice([2, 3, 4], p=[0.3, 0.4, 0.3])
+            st.markdown(f"""
+            <div class="mood-card">
+                <h4>{mood_emoji} Average Mood</h4>
+                <h2>{avg_mood:.1f}/5</h2>
+                <p>{trend_mood_icon} {trends['mood_trend'].title()}</p>
+            </div>
+            """, unsafe_allow_html=True)
             
-            add_mood_entry(
-                mood_score=mood_score,
-                stress_level=stress_level,
-                category=category,
-                message_length=len(message)
-            )
+            st.markdown(f"""
+            <div class="stress-card">
+                <h4>{stress_emoji} Average Stress</h4>
+                <h2>{avg_stress:.1f}/5</h2>
+                <p>{trend_stress_icon} {trends['stress_trend'].title()}</p>
+            </div>
+            """, unsafe_allow_html=True)
             
-            cleanup_session_state()
+            # Total interactions
+            st.metric("💬 Total Interactions", len(st.session_state.mood_data))
+            
+        # Quick mood check
+        st.subheader("🎭 Quick Mood Check")
+        mood_input = st.selectbox("How are you feeling?", [1, 2, 3, 4, 5], index=2,
+                                 format_func=lambda x: f"{x} - {'😢' if x<=2 else '😐' if x==3 else '😊' if x<=4 else '😄'}")
+        stress_input = st.selectbox("Stress level?", [1, 2, 3, 4, 5], index=2,
+                                   format_func=lambda x: f"{x} - {'😌' if x<=2 else '🤔' if x==3 else '😰' if x<=4 else '🤯'}")
+        
+        if st.button("📝 Log Mood"):
+            log_mood_data(mood_input, stress_input, 'manual_entry')
+            st.success("Mood logged successfully!")
             st.rerun()
-
-# Analytics Dashboard
-st.markdown("---")
-st.markdown('<div class="analytics-panel">', unsafe_allow_html=True)
-st.markdown("### 📈 Your Mental Health Analytics")
-
-if len(st.session_state.mood_data) > 0:
-    # Show mood visualization
-    create_mood_visualization()
+        
+        # Export options
+        st.subheader("📤 Export Data")
+        
+        if not st.session_state.mood_data.empty:
+            # Export mood data
+            mood_csv, mood_filename = export_data_as_csv(st.session_state.mood_data, "mood_data")
+            st.download_button(
+                label="📊 Download Mood Data",
+                data=mood_csv,
+                file_name=mood_filename,
+                mime="text/csv"
+            )
+        
+        if st.session_state.messages:
+            # Export chat history
+            chat_df = pd.DataFrame([
+                {
+                    'timestamp': datetime.now() - timedelta(minutes=len(st.session_state.messages)-i),
+                    'role': msg['role'],
+                    'content': msg['content']
+                }
+                for i, msg in enumerate(st.session_state.messages)
+            ])
+            
+            chat_csv, chat_filename = export_data_as_csv(chat_df, "chat_history")
+            st.download_button(
+                label="💬 Download Chat History",
+                data=chat_csv,
+                file_name=chat_filename,
+                mime="text/csv"
+            )
+        
+        # Memory optimization button
+        if st.button("🧹 Optimize Memory"):
+            optimize_memory()
+            st.success("Memory optimized!")
+            st.rerun()
+        
+        # Clear cache button
+        if st.button("🗑️ Clear Cache"):
+            st.cache_data.clear()
+            st.session_state.cache_hits = 0
+            st.success("Cache cleared!")
+            st.rerun()
     
-    # Additional analytics
-    col1, col2, col3 = st.columns(3)
+    # Main chat interface
+    col1, col2 = st.columns([2, 1])
     
     with col1:
-        total_interactions = len(st.session_state.mood_data)
-        st.metric("Total Interactions", total_interactions)
+        st.subheader("💬 Chat Interface")
+        
+        # Display chat messages
+        chat_container = st.container()
+        with chat_container:
+            for message in st.session_state.messages:
+                if message["role"] == "user":
+                    st.markdown(f"""
+                    <div class="chat-message user-message">
+                        <strong>You:</strong> {message["content"]}
+                    </div>
+                    """, unsafe_allow_html=True)
+                else:
+                    st.markdown(f"""
+                    <div class="chat-message bot-message">
+                        <strong>AI Assistant:</strong> {message["content"]}
+                    </div>
+                    """, unsafe_allow_html=True)
+        
+        # Crisis alert
+        if st.session_state.crisis_detected:
+            st.markdown("""
+            <div class="crisis-alert">
+                <h3>🚨 Crisis Support Resources Available</h3>
+                <p>If you're having thoughts of self-harm, please reach out for immediate help.</p>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        # Chat input
+        user_input = st.chat_input("Share what's on your mind...")
+        
+        if user_input:
+            # Add user message
+            st.session_state.messages.append({"role": "user", "content": user_input})
+            
+            # Analyze mood and detect crisis
+            mood_score, stress_score = analyze_mood_from_text(user_input)
+            category = categorize_conversation(user_input)
+            crisis = detect_crisis(user_input)
+            
+            if crisis:
+                st.session_state.crisis_detected = True
+            
+            # Log mood data
+            log_mood_data(mood_score, stress_score, category)
+            
+            # Generate AI response with caching
+            ai_response = get_ai_response(user_input, mood_score, stress_score, category)
+            st.session_state.messages.append({"role": "assistant", "content": ai_response})
+            
+            st.session_state.conversation_count += 1
+            st.rerun()
     
     with col2:
-        avg_mood = np.mean(st.session_state.mood_data['mood_score'])
-        mood_emoji = "😄" if avg_mood >= 4 else "🙂" if avg_mood >= 3 else "😔"
-        st.metric("Average Mood", f"{mood_emoji} {avg_mood:.1f}/5")
-    
-    with col3:
-        avg_stress = np.mean(st.session_state.mood_data['stress_level'])
-        stress_emoji = "😱" if avg_stress >= 4 else "😰" if avg_stress >= 3 else "😌"
-        st.metric("Average Stress", f"{stress_emoji} {avg_stress:.1f}/5")
-    
-    # Category distribution
-    if len(st.session_state.mood_data) > 5:
-        st.markdown("#### 🏷️ Conversation Topics")
-        category_counts = st.session_state.mood_data['category'].value_counts()
+        st.subheader("📈 Analytics Visualizations")
         
-        fig_pie = px.pie(
-            values=category_counts.values,
-            names=category_counts.index,
-            title="What you talk about most",
-            color_discrete_sequence=px.colors.qualitative.Set3
-        )
-        fig_pie.update_layout(height=300)
-        st.plotly_chart(fig_pie, use_container_width=True)
+        if not st.session_state.mood_data.empty:
+            # Mood trend chart
+            mood_chart = create_mood_chart(st.session_state.mood_data)
+            if mood_chart:
+                st.plotly_chart(mood_chart, use_container_width=True)
+            
+            # Category distribution
+            if len(st.session_state.mood_data) > 1:
+                category_chart = create_category_chart(st.session_state.mood_data)
+                if category_chart:
+                    st.plotly_chart(category_chart, use_container_width=True)
+            
+            # Recent mood entries
+            st.subheader("📋 Recent Mood Entries")
+            recent_entries = st.session_state.mood_data.tail(5)
+            for _, entry in recent_entries.iterrows():
+                mood_emoji = "😊" if entry['mood'] >= 4 else "😐" if entry['mood'] >= 3 else "😔"
+                stress_emoji = "😌" if entry['stress'] <= 2 else "😰" if entry['stress'] >= 4 else "🤔"
+                st.write(f"{mood_emoji} {stress_emoji} {entry['timestamp'].strftime('%H:%M')} - {entry['category']}")
         
-else:
-    st.info("Start chatting or log your mood to see analytics! 📊")
-
-st.markdown('</div>', unsafe_allow_html=True)
-
-# Footer with additional resources
-st.markdown("---")
-st.markdown("### 📚 Additional Resources")
-with st.expander("Campus Wellness Resources"):
+        else:
+            st.info("Start chatting to see analytics and mood tracking data!")
+    
+    # Footer
     st.markdown("""
-    - **Student Counseling Services**: Individual and group therapy
-    - **Peer Support Groups**: Connect with other students
-    - **Wellness Workshops**: Stress management, mindfulness, study skills
-    - **Chapel Services**: Spiritual guidance and community
-    - **Academic Support Center**: Tutoring and study strategies
-    - **Health Center**: Medical and mental health services
-    """)
+    ---
+    <div style="text-align: center; color: #666; padding: 1rem;">
+        <p>🧠 Mental Health Support Chatbot with Advanced Analytics</p>
+        <p>Remember: This AI assistant is not a replacement for professional mental health care.</p>
+        <p>💾 Memory optimized • 📊 Real-time analytics • 🗂️ Data export capabilities</p>
+    </div>
+    """, unsafe_allow_html=True)
 
-st.markdown("---")
-st.markdown("Made with ❤️ for Redeemers University Students | You're never alone in this journey!")
-
-# Memory usage info (toggle-able for debugging)
-if st.checkbox("🔧 Show System Info", value=False):
-    st.markdown('<div class="memory-info">', unsafe_allow_html=True)
-    
-    # App memory info
-    st.write(f"💬 Messages in memory: {len(st.session_state.messages)}")
-    st.write(f"🧠 Conversation context: {len(st.session_state.responder.conversation_context)}")
-    st.write(f"📊 Mood entries: {len(st.session_state.mood_data)}")
-    st.write(f"🚨 Crisis mode: {st.session_state.crisis_mode}")
-    st.write(f"📏 Memory limits: Messages≤{MAX_MESSAGES}, Context≤{MAX_CONTEXT_LENGTH}, Input≤{MAX_INPUT_LENGTH}")
-    
-    # System memory info
-    memory_info = get_system_memory_info()
-    st.write(f"🖥️ System Memory: {memory_info['used']:.1f}GB/{memory_info['total']:.1f}GB ({memory_info['percent']:.1f}%)")
-    
-    # Data shapes
-    if len(st.session_state.mood_data) > 0:
-        st.write(f"📈 Mood data shape: {st.session_state.mood_data.shape}")
-        st.write(f"🏷️ Categories tracked: {st.session_state.mood_data['category'].nunique()}")
-    
-    st.markdown('</div>', unsafe_allow_html=True)
+if __name__ == "__main__":
+    main()
