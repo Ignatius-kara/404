@@ -14,15 +14,17 @@ import hashlib
 try:
     from textblob import TextBlob
 except ImportError:
-    TextBlob = None  # Fallback for sentiment analysis
+    TextBlob = None
 try:
     from transformers import pipeline
+    import torch
 except ImportError:
-    pipeline = None  # Fallback for emotion classifier
+    pipeline = None
+    torch = None
 try:
     from langdetect import detect
 except ImportError:
-    detect = None  # Fallback for language detection
+    detect = None
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -86,7 +88,6 @@ st.markdown("""
         from {opacity: 0; transform: translateY(10px);}
         to {opacity: 1; transform: translateY(0);}
     }
-    /* Accessibility */
     [role="alert"] { outline: 2px solid #000; }
     button, input, select { font-size: 16px; padding: 0.5rem; }
 </style>
@@ -102,7 +103,7 @@ def initialize_session_state():
         'cache_hits': 0,
         'memory_optimized': False
     }
-    for key, value in defaults:
+    for key, value in defaults.items():
         if key not in st.session_state:
             st.session_state[key] = value
 
@@ -127,8 +128,8 @@ def hash_text(text):
 
 @st.cache_resource
 def load_emotion_classifier():
-    if pipeline is None:
-        logger.warning("Transformers not available; using fallback")
+    if pipeline is None or torch is None:
+        logger.warning("Transformers or torch not available; using fallback")
         return None
     logger.info("Loading emotion classifier...")
     try:
