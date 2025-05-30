@@ -1,8 +1,9 @@
-streamlit==4.0.2
+streamlit==1.39.0
 pandas==2.2.1
-numpy==1.19.5
-plotly==4.14.3
-psutil==5.8.0
-textblob==0.17.1
+numpy==2.0.1
+plotly==5.15.0
+matplotlib==3.9.2
+psutil==6.0.0
+textblob==0.18.0.post0
 transformers==4.44.2
 langdetect==1.0.9
