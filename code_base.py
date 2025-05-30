@@ -1,13 +1,6 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import psutil
-import gc
-import logging
-from datetime import datetime, timedelta
-import io
-from functools import lru_cache
-import hashlib
 try:
     import plotly.express as px
     import plotly.graph_objects as go
@@ -16,6 +9,17 @@ except ImportError:
     px = None
     go = None
     make_subplots = None
+import psutil
+import gc
+import logging
+from datetime import datetime, timedelta
+import io
+from functools import lru_cache
+import hashlib
+try:
+    import matplotlib.pyplot as plt
+except ImportError:
+    plt = None
 try:
     from textblob import TextBlob
 except ImportError:
@@ -198,29 +202,53 @@ def calculate_trends(mood_data):
 
 @st.cache_data(ttl=300)
 def create_mood_chart(mood_data):
-    if mood_data.empty or px is None or go is None or make_subplots is None:
+    if mood_data.empty:
         return None
-    fig = make_subplots(rows=2, cols=1, subplot_titles=('Mood Trends', 'Stress Levels'))
-    fig.add_trace(go.Scatter(x=mood_data['timestamp'], y=mood_data['mood'], mode='lines+markers', name='Mood', line=dict(color='#667eea')), row=1, col=1)
-    fig.add_trace(go.Scatter(x=mood_data['timestamp'], y=mood_data['stress'], mode='lines+markers', name='Stress', line=dict(color='#f093fb')), row=2, col=1)
-    crisis_entries = mood_data[mood_data['crisis']]
-    for _, entry in crisis_entries.iterrows():
-        fig.add_annotation(x=entry['timestamp'], y=entry['mood'], text="⚠️ Crisis", showarrow=True, arrowhead=2, row=1, col=1)
-    fig.update_layout(height=500, showlegend=True, title_text="Mood & Stress Analytics", title_x=0.5)
-    fig.update_xaxes(title_text="Time")
-    fig.update_yaxes(title_text="Mood (1-5)", row=1, col=1)
-    fig.update_yaxes(title_text="Stress (1-5)", row=2, col=1)
-    return fig
+    if px and go and make_subplots:
+        fig = make_subplots(rows=2, cols=1, subplot_titles=('Mood Trends', 'Stress Levels'))
+        fig.add_trace(go.Scatter(x=mood_data['timestamp'], y=mood_data['mood'], mode='lines+markers', name='Mood', line=dict(color='#667eea')), row=1, col=1)
+        fig.add_trace(go.Scatter(x=mood_data['timestamp'], y=mood_data['stress'], mode='lines+markers', name='Stress', line=dict(color='#f093fb')), row=2, col=1)
+        crisis_entries = mood_data[mood_data['crisis']]
+        for _, entry in crisis_entries.iterrows():
+            fig.add_annotation(x=entry['timestamp'], y=entry['mood'], text="⚠️ Crisis", showarrow=True, arrowhead=2, row=1, col=1)
+        fig.update_layout(height=500, showlegend=True, title_text="Mood & Stress Analytics", title_x=0.5)
+        fig.update_xaxes(title_text="Time")
+        fig.update_yaxes(title_text="Mood (1-5)", row=1, col=1)
+        fig.update_yaxes(title_text="Stress (1-5)", row=2, col=1)
+        return fig
+    elif plt:
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8))
+        ax1.plot(mood_data['timestamp'], mood_data['mood'], 'b-o', label='Mood')
+        ax1.set_title('Mood Trends')
+        ax1.set_ylabel('Mood (1-5)')
+        ax2.plot(mood_data['timestamp'], mood_data['stress'], 'm-o', label='Stress')
+        ax2.set_title('Stress Levels')
+        ax2.set_ylabel('Stress (1-5)')
+        ax2.set_xlabel('Time')
+        plt.tight_layout()
+        return fig
+    else:
+        logger.warning("No plotting library available")
+        return None
 
 @st.cache_data(ttl=600)
 def create_category_chart(mood_data):
-    if mood_data.empty or px is None:
+    if mood_data.empty:
         return None
     category_counts = mood_data['category'].value_counts()
-    fig = px.pie(values=category_counts.values, names=category_counts.index, title="Conversation Topics")
-    fig.update_traces(textposition='inside', textinfo='percent+label')
-    fig.update_layout(height=400)
-    return fig
+    if px:
+        fig = px.pie(values=category_counts.values, names=category_counts.index, title="Conversation Topics")
+        fig.update_traces(textposition='inside', textinfo='percent+label')
+        fig.update_layout(height=400)
+        return fig
+    elif plt:
+        fig, ax = plt.subplots(figsize=(8, 8))
+        ax.pie(category_counts.values, labels=category_counts.index, autopct='%1.1f%%')
+        ax.set_title('Conversation Topics')
+        return fig
+    else:
+        logger.warning("No plotting library available")
+        return None
 
 def optimize_memory():
     if not st.session_state.get('memory_optimized', False):
@@ -287,43 +315,46 @@ def load_document_data():
     except Exception as e:
         logger.error(f"Document load error: {e}")
 
-@lru_cache(maxsize=256)
-def get_dynamic_response(message, mood_score, stress_score, category):
+@lru_cache(maxsize=512)
+def get_dynamic_response(user_input, mood_score, stress_score, category):
     st.session_state.cache_hits += 1
     trends = calculate_trends(st.session_state.mood_data)
     
-    crisis_response = """🚨 **CRISIS SUPPORT** 🚨
-Please know you are not alone:
-• **Counselling: +2348060623184, +2348139121197**
-• **Crisis Text Line: Text HOME to 741741**
-• **Redeemers University Security: +2348032116599**
-• **SAMHSA: 1-800-662-4357**
-Reach out—you matter."""
+    crisis_response = """
+    🚨 **CRISIS SUPPORT** 🚨🚖
+    Please know you're not alone:
+    • **Counselling: +2348060623184, +2348139121197**
+
+    • **Redeemers University Security: +2348032116599**
+  
+    Reach out—you’re valued.
+    """
     
-    if detect_crisis(message):
+    if detect_crisis(user_input):
         return crisis_response
     
     if trends['stress_trend'] == 'worsening' and stress_score >= 4:
-        return "You’ve been stressed lately. Try breathing: inhale 4 counts, hold 4, exhale 6. Want to try again?"
+        return "You've been really stressed lately. Try this breathing exercise: inhale for 4 counts, hold for 4, exhale for 6. Want to try it again?"
     if trends['mood_trend'] == 'declining' and mood_score <= 2:
-        return "Things seem tough. Want to share what’s weighing on you?"
+        return "Things seem tough. Want to share what's weighing on you?"
     
-    if detect and detect(message) == 'pcm':
+    if detect and detect_language(user_input) == 'pcm':
         pidgin_responses = {
             'self_forgiveness': "E hard to forgive yourself, I sabi. Wetin dey hold you?",
             'relationships': "Relationship wahala no easy. You don yarn with dem?",
             'existential': "Na deep talk. Wetin dey make you feel life no get meaning?",
-            'general': "I dey feel you. Wetin dey happen? Make we talk."
+            'general': "I dey feel you. Wetin dey what's up?"
         }
-        return pidgin_responses.get(category, "I dey here for you. Wetin dey go on?")
+        return pidgin_response.get(category, "I dey here for you. Let's talk.")
     
     base_responses = {
-        'self_forgiveness': ["Forgiving yourself is tough. What’s one thing you’re holding onto?", "You deserve compassion. Can we explore this?"],
+        'self_forgiveness': ["Forgiving yourself is tough. What's one thing you’re holding onto?", "You deserve kindness. Can we explore this together?"],
         'identity': ["Feeling like you’re not yourself is hard. What does ‘you’ feel like?", "Let’s explore: what’s one value important to you?"],
         'existential': ["Wondering about life’s meaning is deep. What matters to you now?", "What’s one small thing that feels meaningful today?"]
+        
     }
-    responses = base_responses.get(category, ["Thanks for sharing. Want to tell me more?", "I’m here. What’s on your mind?"])
-    return responses[0 if mood_score <= 2 or stress_score >= 4 else 1]
+    responses = base_response.get(category, ["Thanks for sharing. Want to tell me more?", "I’m here for you. What’s on your mind?"])
+    return responses[0] if mood_score <= 2 or stress_score >= 4 else responses[1]
 
 def log_mood_data(mood, stress, category, crisis=False):
     new_entry = pd.DataFrame({
@@ -389,25 +420,31 @@ def main():
             """, unsafe_allow_html=True)
         
         st.subheader("🎭 Mood Check")
-        mood_input = st.selectbox("Feeling?", [1, 2, 3, 4, 5], index=2, format_func=lambda x: f"{x} {'😢' if x<=2 else '😐' if x==3 else '😊'}", key="mood")
-        stress_input = st.selectbox("Stress?", [1, 2, 3, 4, 5], index=2, format_func=lambda x: f"{x} {'😌' if x<=2 else '🤔' if x==3 else '😰'}", key="stress")
-        if st.button("📝 Log"):
+        mood_input = st.selectbox("Feeling?", [1, 2, 3, 4, 5], index=2, format_func=lambda x: f"{x} {'😢' if x<=2 else '😐' if x==3 else '😊'}")
+        stress_input = st.selectbox("Stress?", [1, 2, 3, 4, 5], index=2, format_func=lambda x: f"{x} {'😄' if x<=2 else '🫤' if x==3 else '😓'}")
+        if st.button("📝 Log Mood"):
             log_mood_data(mood_input, stress_input, 'manual_entry')
-            st.success("Mood logged!")
+            st.success("Mood logged successfully!")
             st.rerun()
         
-        st.subheader("📤 Export")
+        st.subheader("📤 Export Data")
         if not st.session_state.mood_data.empty:
             mood_csv, mood_filename = export_data_as_csv(st.session_state.mood_data, "mood")
-            st.download_button(label="📊 Mood Data", data=mood_csv, file_name=mood_filename, mime="text/csv", key="mood_download")
+            st.download_button("📊 Mood Data", mood_csv, mood_filename, "text/csv")
+            st.session_state.success("Mood Data ready to download!")
         if st.session_state.messages:
-            chat_df = pd.DataFrame([{'timestamp': datetime.now() - timedelta(minutes=len(st.session_state.messages)-i), 'role': msg['role'], 'content': msg['content']} for i, msg in enumerate(st.session_state.messages)])
-            chat_csv, chat_filename = export_data_as_csv(chat_df, "chat")
-            st.download_button(label="💬 Chat History", data=chat_csv, file_name=chat_filename, mime="text/csv", key="chat_download")
+            chat_data = pd.DataFrame([{
+                'timestamp': datetime.now() - timedelta(minutes=len(st.session_state.messages)-i),
+                'role': msg['role'],
+                'content': msg['content']
+            } for i, msg in enumerate(st.session_state.messages)])
+            chat_csv, chat_filename = export_data_as_csv(chat_data, "chat")
+            st.download_button("💬 Chat History", chat_csv, chat_filename, "text/csv")
+            st.session_state.success("Chat History ready to download!")
         
-        if st.button("🧹 Optimize"):
+        if st.button("🧹 Optimize Memory"):
             optimize_memory()
-            st.success("Memory optimized!")
+            st.success("Memory optimized successfully!")
             st.rerun()
 
     col1, col2 = st.columns([2, 1])
@@ -425,12 +462,12 @@ def main():
         if st.session_state.crisis_detected:
             st.markdown("""
             <div class="crisis-alert" role="alert">
-                <h3>🚨 Crisis Support</h3>
-                <p>Reach out for help if you're struggling.</p>
+                <h3>🚨 Emergency Support</h3>
+                <p>Please reach out if you're struggling.</p>
             </div>
             """, unsafe_allow_html=True)
         
-        user_input = st.chat_input("What’s on your mind?")
+        user_input = st.chat_input("What's on your mind?")
         if user_input:
             st.session_state.messages.append({"role": "user", "content": user_input})
             mood_score, stress_score, crisis = analyze_emotion(user_input)
@@ -448,21 +485,27 @@ def main():
         if not st.session_state.mood_data.empty:
             mood_chart = create_mood_chart(st.session_state.mood_data)
             if mood_chart:
-                st.plotly_chart(mood_chart, use_container_width=True)
-            else:
-                st.warning("Analytics charts unavailable; please ensure Plotly is installed.")
+                if px:
+                    st.plotly_chart(mood_chart, use_container_width=True)
+                elif plt:
+                    st.pyplot(mood_chart)
+                else:
+                    st.warning("Charting unavailable; install plotly or matplotlib.")
             if len(st.session_state.mood_data) > 1:
                 category_chart = create_category_chart(st.session_state.mood_data)
                 if category_chart:
-                    st.plotly_chart(category_chart, use_container_width=True)
-            st.subheader("📋 Recent")
+                    if px:
+                        st.plotly_chart(category_chart, use_container_width=True)
+                    elif plt:
+                        st.pyplot(category_chart)
+            st.subheader("Recent Activity")
             for _, entry in st.session_state.mood_data.tail(5).iterrows():
                 mood_emoji = "😊" if entry['mood'] >= 4 else "😐" if entry['mood'] >= 3 else "😔"
                 stress_emoji = "😌" if entry['stress'] <= 2 else "😰" if entry['stress'] >= 4 else "🤔"
                 crisis_flag = "⚠️" if entry['crisis'] else ""
-                st.write(f"{mood_emoji} {stress_emoji} {crisis_flag} {entry['timestamp'].strftime('%H:%M')} - {entry['category']}")
+                st.write(f"{mood_emoji} {stress_emoji} {crisis_flag} {entry['timestamp'].strftime('%H:%M:%S')} - {entry['category']}")
         else:
-            st.info("Chat to see analytics!")
+            st.info("Start chatting to see analytics!")
 
 if __name__ == "__main__":
     main()
