@@ -1,9 +1,6 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import plotly.express as px
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 import psutil
 import gc
 import logging
@@ -11,6 +8,14 @@ from datetime import datetime, timedelta
 import io
 from functools import lru_cache
 import hashlib
+try:
+    import plotly.express as px
+    import plotly.graph_objects as go
+    from plotly.subplots import make_subplots
+except ImportError:
+    px = None
+    go = None
+    make_subplots = None
 try:
     from textblob import TextBlob
 except ImportError:
@@ -193,7 +198,7 @@ def calculate_trends(mood_data):
 
 @st.cache_data(ttl=300)
 def create_mood_chart(mood_data):
-    if mood_data.empty:
+    if mood_data.empty or px is None or go is None or make_subplots is None:
         return None
     fig = make_subplots(rows=2, cols=1, subplot_titles=('Mood Trends', 'Stress Levels'))
     fig.add_trace(go.Scatter(x=mood_data['timestamp'], y=mood_data['mood'], mode='lines+markers', name='Mood', line=dict(color='#667eea')), row=1, col=1)
@@ -209,7 +214,7 @@ def create_mood_chart(mood_data):
 
 @st.cache_data(ttl=600)
 def create_category_chart(mood_data):
-    if mood_data.empty:
+    if mood_data.empty or px is None:
         return None
     category_counts = mood_data['category'].value_counts()
     fig = px.pie(values=category_counts.values, names=category_counts.index, title="Conversation Topics")
@@ -444,6 +449,8 @@ def main():
             mood_chart = create_mood_chart(st.session_state.mood_data)
             if mood_chart:
                 st.plotly_chart(mood_chart, use_container_width=True)
+            else:
+                st.warning("Analytics charts unavailable; please ensure Plotly is installed.")
             if len(st.session_state.mood_data) > 1:
                 category_chart = create_category_chart(st.session_state.mood_data)
                 if category_chart:
