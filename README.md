@@ -4,7 +4,7 @@ Features
 
 Chat Interface: AI responses based on mood, stress, and conversation category.
 Mood/Stress Tracking: Uses Hugging Face’s distilbert-base-uncased-emotion or TextBlob fallback.
-Analytics: Plotly charts for mood/stress trends and topic distribution (if Plotly is installed).
+Analytics: Charts with `plotly` (or `matplotlib` fallback), and `crisis` annotations..
 Crisis Detection: Localized support resources (e.g., Nigerian counseling numbers).
 Localization: Nigerian Pidgin responses.
 Memory Optimization: Caching and data pruning.
